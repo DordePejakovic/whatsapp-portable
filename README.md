@@ -22,6 +22,30 @@ The name WhatsApp™ as well as related names, marks, emblems and images are reg
 WhatsApp™ portable app made with 🚀 [Portapps](https://portapps.io).<br />
 Documentation and downloads can be found on https://portapps.io/app/whatsapp-portable/
 
+## Build (this fork)
+
+The official WhatsApp Desktop Electron installer used by upstream no longer exists, so this fork bundles a
+modern Electron runtime with a small WhatsApp Web shell (see `electron/`).
+
+Requirements: Go, Node.js 18+, Windows 10+ (`tar.exe`).
+
+```
+node scripts/build.js --out C:\Progs\whatsapp-portable
+```
+
+Optional settings in `whatsapp-portable.yml` (next to the exe):
+
+```yaml
+app:
+  cleanup: false
+  clear_gpu_cache: true   # delete Chromium GPU/shader caches on start (fixes black window)
+  disable_gpu: false      # software rendering if the window is still black
+  start_minimized: false  # start hidden in the tray
+```
+
+Only one instance per portable folder runs; launching it again brings the existing window to the front.
+Closing the window hides it to the tray, use *Quit* from the tray or `Ctrl+Q` to exit.
+
 ## Contributing
 
 Want to contribute? Awesome! The most basic way to show your support is to star the project, or to raise issues. If

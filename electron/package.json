@@ -1,0 +1,9 @@
+{
+  "name": "whatsapp-portable",
+  "productName": "WhatsApp",
+  "version": "2.0.0",
+  "description": "WhatsApp Web portable shell for Portapps",
+  "main": "main.js",
+  "private": true,
+  "license": "MIT"
+}

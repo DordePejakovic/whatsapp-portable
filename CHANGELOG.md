@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.0-33 (2026/11/09)
+
+* Replace the discontinued WhatsApp Desktop (Electron 2021) build with a bundled modern Electron shell
+  loading WhatsApp Web. Fixes the black window where linking/restoring an account was impossible
+* Single instance: launching again focuses the running window instead of opening a new one
+  (per portable folder, so separate copies can still run side by side)
+* Clear stale Chromium GPU/shader caches on start (`clear_gpu_cache`, enabled by default)
+* New options `disable_gpu` and `start_minimized`
+* Tray icon, unread badge, spellcheck, external links open in the default browser
+* New build script `node scripts/build.js`
+
 ## 2.2134.10-32 (2021/08/31)
 
 * WhatsApp 2.2134.10

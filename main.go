@@ -5,18 +5,26 @@
 package main
 
 import (
+	"fmt"
+	"hash/fnv"
 	"os"
+	"os/exec"
 	"path"
+	"strings"
 
 	"github.com/portapps/portapps/v3"
 	"github.com/portapps/portapps/v3/pkg/log"
+	"github.com/portapps/portapps/v3/pkg/mutex"
 	"github.com/portapps/portapps/v3/pkg/shortcut"
 	"github.com/portapps/portapps/v3/pkg/utl"
 	"github.com/portapps/whatsapp-portable/assets"
 )
 
 type config struct {
-	Cleanup bool `yaml:"cleanup" mapstructure:"cleanup"`
+	Cleanup        bool `yaml:"cleanup" mapstructure:"cleanup"`
+	DisableGPU     bool `yaml:"disable_gpu" mapstructure:"disable_gpu"`
+	ClearGPUCache  bool `yaml:"clear_gpu_cache" mapstructure:"clear_gpu_cache"`
+	StartMinimized bool `yaml:"start_minimized" mapstructure:"start_minimized"`
 }
 
 var (
@@ -24,12 +32,27 @@ var (
 	cfg *config
 )
 
+// Chromium caches tied to the GPU/driver. When they get stale (driver update, portable
+// folder moved to another PC) the window renders black. They are safe to delete.
+var gpuCacheFolders = []string{
+	"GPUCache",
+	"ShaderCache",
+	"GrShaderCache",
+	"GraphiteDawnCache",
+	"DawnCache",
+	"DawnGraphiteCache",
+	"DawnWebGPUCache",
+}
+
 func init() {
 	var err error
 
 	// Default config
 	cfg = &config{
-		Cleanup: false,
+		Cleanup:        false,
+		DisableGPU:     false,
+		ClearGPUCache:  true,
+		StartMinimized: false,
 	}
 
 	// Init app
@@ -40,12 +63,35 @@ func init() {
 
 func main() {
 	utl.CreateFolder(app.DataPath)
-	electronAppPath := app.ElectronAppPath()
 
 	app.Process = utl.PathJoin(app.AppPath, "WhatsApp.exe")
-	app.WorkingDir = electronAppPath
+	app.WorkingDir = app.AppPath
 	app.Args = []string{
 		"--user-data-dir=" + app.DataPath,
+	}
+	if cfg.DisableGPU {
+		app.Args = append(app.Args, "--disable-gpu", "--disable-gpu-compositing")
+	}
+	if cfg.StartMinimized {
+		app.Args = append(app.Args, "--start-minimized")
+	}
+
+	// Single instance: if this portable copy is already running, just bring its window
+	// to the front (WhatsApp.exe forwards to the running instance and exits).
+	mu, err := mutex.Create(mutexName())
+	if err != nil {
+		log.Info().Msg("WhatsApp portable is already running, focusing existing window")
+		focusRunningInstance()
+		return
+	}
+	defer func() {
+		if err := mutex.Release(mu); err != nil {
+			log.Error().Err(err).Msg("Cannot release mutex")
+		}
+	}()
+
+	if cfg.ClearGPUCache {
+		clearGPUCache()
 	}
 
 	// Cleanup on exit
@@ -88,4 +134,39 @@ func main() {
 
 	defer app.Close()
 	app.Launch(os.Args[1:])
+}
+
+// mutexName is unique per portable copy, so separate copies (e.g. different accounts)
+// can still run side by side.
+func mutexName() string {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(strings.ToLower(app.RootPath)))
+	return fmt.Sprintf("%s-%x", app.ID, h.Sum64())
+}
+
+func focusRunningInstance() {
+	if !utl.Exists(app.Process) {
+		return
+	}
+	cmd := exec.Command(app.Process, append(app.Args, os.Args[1:]...)...)
+	cmd.Dir = app.WorkingDir
+	if err := cmd.Start(); err != nil {
+		log.Error().Err(err).Msg("Cannot signal running instance")
+		return
+	}
+	_ = cmd.Process.Release()
+}
+
+func clearGPUCache() {
+	for _, folder := range gpuCacheFolders {
+		p := utl.PathJoin(app.DataPath, folder)
+		if !utl.Exists(p) {
+			continue
+		}
+		if err := os.RemoveAll(p); err != nil {
+			log.Warn().Err(err).Msgf("Cannot remove %s", p)
+			continue
+		}
+		log.Debug().Msgf("Removed GPU cache %s", p)
+	}
 }
